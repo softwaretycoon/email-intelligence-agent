@@ -185,6 +185,7 @@ def start_agent():
     print("📬 Powered by Gmail + Gemini + WhatsApp")
     print("⚡ Real-time mode — fires on every new email\n")
 
+
     # Start Gmail watch
     print("👀 Starting Gmail push notifications...")
     renew_gmail_watch()
