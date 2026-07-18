@@ -107,16 +107,6 @@ def start_agent():
     print("📬 Powered by Gmail + Gemini + WhatsApp")
     print("⏰ Will check for new emails every 30 minutes")
     print("Press Ctrl+C to stop the agent.\n")
-
-    # Send startup notification to WhatsApp
-    send_whatsapp(
-        "🚀 *Email Intelligence Agent is now running!*\n\n"
-        "I will summarise your unread emails and send them here every 30 minutes.\n\n"
-        "To reply to an email send:\n"
-        "*REPLY 1 Your message here*\n\n"
-        "_Press Ctrl+C in your terminal to stop._"
-    )
-
     # Run immediately on startup
     run_agent()
 

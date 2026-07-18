@@ -50,10 +50,6 @@ def send_all_summaries(summaries):
         send_whatsapp(message)
         print(f"Sent summary {i} of {len(summaries)} to WhatsApp.")
 
-    # Send a footer message
-    footer = "✅ *All summaries delivered.*\n\n_Powered by Email Intelligence Agent_"
-    send_whatsapp(footer)
-    print("\nAll messages delivered to WhatsApp.")
 
 
 # ── Test this file directly ───────────────────────────────────────────────────
