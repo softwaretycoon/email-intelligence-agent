@@ -203,8 +203,8 @@ def start_agent():
     scheduler_thread.daemon = True
     scheduler_thread.start()
 
-    # Run initial email check on startup
-    run_agent()
+    # Startup check disabled — real-time only
+    # run_agent()
 
     # Start Flask server — listens for Gmail push notifications
     print("\n🌐 Starting webhook server on port 5000...")
