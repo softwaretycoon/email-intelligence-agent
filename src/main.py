@@ -14,6 +14,7 @@ sys.path.append('src')
 from email_reader    import get_unread_emails, get_gmail_service, mark_as_read
 from summariser      import summarise_all_emails
 from whatsapp_sender import send_all_summaries, send_whatsapp
+from summariser import process_incoming_email
 
 # ── Flask app for receiving Gmail push notifications ──────────────────────────
 app = Flask(__name__)
@@ -70,8 +71,12 @@ def run_agent():
 
         # ── Step 2: Summarise with Gemini ─────────────────────────
         print("\n🤖 Step 2: Summarising emails with Gemini...")
-        summaries = summarise_all_emails(emails, priority_filter=True)
-        print(f"✅ {len(summaries)} email(s) summarised.")
+        summaries = []
+        for email in emails:
+            summary = process_incoming_email(email)
+            if summary:
+                summaries.append({'id': email['id'], 'summary': summary, 'urgency': 'Medium'})
+                print(f"✅ {len(summaries)} email(s) summarised.")
 
         if not summaries:
             print("No summaries to send — all emails were filtered out.")

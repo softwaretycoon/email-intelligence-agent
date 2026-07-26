@@ -9,13 +9,29 @@ load_dotenv()
 # ── Connect to Gemini ─────────────────────────────────────────────────────────
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+# ── Newsletter keywords — skip these without calling Gemini ──────────────────
+SKIP_KEYWORDS = [
+    'unsubscribe', 'newsletter', 'promotion', 'offer',
+    'deal', 'discount', 'sale', 'marketing', 'no-reply',
+    'noreply', 'donotreply', 'do-not-reply', 'notification',
+    'automated', 'auto-generated', 'mailer-daemon'
+]
 
-def summarise_email(sender, subject, body):
-    """
-    Sends one email to Gemini and gets back a short summary.
-    Returns a clean, readable summary string.
-    """
 
+def is_newsletter(sender, subject, body):
+    """
+    Returns True if the email looks like a newsletter or promotion.
+    Checks sender, subject and first 500 chars of body.
+    """
+    combined = (sender + ' ' + subject + ' ' + body[:500]).lower()
+    return any(kw in combined for kw in SKIP_KEYWORDS)
+
+
+def summarise_single_email(sender, subject, body):
+    """
+    Sends one email to Gemini and returns a structured summary.
+    Called once per email as it arrives — no batching.
+    """
     prompt = f"""
 You are an intelligent email assistant.
 Summarise the email below in 3-4 sentences maximum.
@@ -34,73 +50,68 @@ Return your summary in this exact format:
 ⚡ Action needed: [Yes / No — and what action if yes]
 🔴 Urgency: [Low / Medium / High]
 """
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt
+        )
+        return response.text.strip()
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
-        contents=prompt
-    )
-    return response.text.strip()
+    except Exception as e:
+        if '429' in str(e):
+            print("  \u23F3 Rate limit hit \u2014 waiting 60 seconds...")
+            time.sleep(60)
+            # Retry once
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=prompt
+            )
+            return response.text.strip()
+        else:
+            raise e
+
+
+def process_incoming_email(email):
+    """
+    Processes a single incoming email.
+    Called directly from main.py when a new email arrives via Pub/Sub.
+    Returns the summary string or None if the email should be skipped.
+    """
+    sender  = email.get('sender', '')
+    subject = email.get('subject', '')
+    body    = email.get('body', '')
+
+    # ── Check if newsletter before calling Gemini ─────────────────
+    if is_newsletter(sender, subject, body):
+        print(f"  \u23ED Skipping \u2014 newsletter or promotional email")
+        return None
+
+    # ── Summarise with Gemini ─────────────────────────────────────
+    print(f"  \uD83E\uDD16 Summarising email from {sender}...")
+    summary = summarise_single_email(sender, subject, body)
+    print(f"  \u2705 Summary ready.")
+    return summary
 
 
 def summarise_all_emails(emails, priority_filter=True):
     """
-    Takes a list of emails from email_reader.py
-    and returns a list of summaries.
-    If priority_filter is True, skips newsletters and promotions.
+    Legacy function kept for compatibility with startup check.
+    Processes a list of emails one at a time.
     """
     summaries = []
     skipped   = 0
 
-    # Keywords that indicate newsletters / promotions
-    skip_keywords = [
-        'unsubscribe', 'newsletter', 'promotion', 'offer',
-        'deal', 'discount', 'sale', 'marketing', 'no-reply'
-    ]
+    for email in emails:
+        summary = process_incoming_email(email)
 
-    for i, email in enumerate(emails, 1):
-        print(f"Summarising email {i} of {len(emails)}...")
-
-        # ── Check for newsletter before calling Gemini ────────────
-        sender_lower  = email['sender'].lower()
-        subject_lower = email['subject'].lower()
-        body_lower    = email['body'].lower()
-
-        is_newsletter = any(
-            kw in sender_lower or kw in subject_lower or kw in body_lower
-            for kw in skip_keywords
-        )
-
-        if priority_filter and is_newsletter:
-            print(f"  ⏭ Skipping — newsletter or promotional email")
+        if summary is None:
             skipped += 1
             continue
 
-        # ── Call Gemini with rate limit protection ────────────────
-        try:
-            summary = summarise_email(
-                sender=email['sender'],
-                subject=email['subject'],
-                body=email['body']
-            )
-        except Exception as e:
-            if '429' in str(e):
-                print(f"  ⏳ Rate limit hit — waiting 20 seconds...")
-                time.sleep(20)
-                # Retry once after waiting
-                summary = summarise_email(
-                    sender=email['sender'],
-                    subject=email['subject'],
-                    body=email['body']
-                )
-            else:
-                print(f"  ❌ Error summarising email: {e}")
-                continue
-
-        # ── Extract urgency from the summary ──────────────────────
+        # Extract urgency from summary
         urgency = "Low"
         if "Urgency: High"   in summary: urgency = "High"
         elif "Urgency: Medium" in summary: urgency = "Medium"
-        elif "Urgency: Low"   in summary: urgency = "Low"
 
         summaries.append({
             'id':      email['id'],
@@ -108,15 +119,8 @@ def summarise_all_emails(emails, priority_filter=True):
             'urgency': urgency
         })
 
-        # ── Wait 5 seconds between each Gemini call ───────────────
-        # This keeps us well within the 15 requests/minute limit
-        if i < len(emails):
-            print(f"  ⏳ Waiting 5 seconds before next email...")
-            time.sleep(5)
-
-    print(f"\n✅ {len(summaries)} email(s) passed the priority filter.")
     if skipped > 0:
-        print(f"⏭  {skipped} newsletter/promotional email(s) skipped.")
+        print(f"\u23ED  {skipped} newsletter/promotional email(s) skipped.")
 
     return summaries
 
@@ -127,15 +131,16 @@ if __name__ == '__main__':
     sys.path.append('src')
     from email_reader import get_unread_emails
 
-    print("Reading emails from Gmail...")
-    emails = get_unread_emails(max_results=3)
+    print("Reading latest email from Gmail...")
+    emails = get_unread_emails(max_results=1)
 
     if not emails:
-        print("No unread emails to summarise.")
+        print("No unread emails.")
     else:
-        print(f"\nSummarising {len(emails)} email(s) with Gemini...\n")
-        summaries = summarise_all_emails(emails)
-
-        for s in summaries:
+        email   = emails[0]
+        summary = process_incoming_email(email)
+        if summary:
             print("\n" + "="*60)
-            print(s['summary'])
+            print(summary)
+        else:
+            print("Email was filtered out.")
