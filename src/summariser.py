@@ -52,7 +52,7 @@ Return your summary in this exact format:
 """
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-3.5-flash-lite",
             contents=prompt
         )
         return response.text.strip()
@@ -63,7 +63,7 @@ Return your summary in this exact format:
             time.sleep(60)
             # Retry once
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model="gemini-3.5-flash-lite",
                 contents=prompt
             )
             return response.text.strip()
