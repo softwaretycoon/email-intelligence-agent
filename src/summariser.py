@@ -86,10 +86,10 @@ def process_incoming_email(email):
         print(f"  \u23ED Skipping \u2014 newsletter or promotional email")
         return None
 
-    # ── Summarise with Gemini ─────────────────────────────────────
-    print(f"  \uD83E\uDD16 Summarising email from {sender}...")
+       # ── Summarise with Gemini ─────────────────────────────────────
+    print(f"  🤖 Summarising email from {sender}...")
     summary = summarise_single_email(sender, subject, body)
-    print(f"  \u2705 Summary ready.")
+    print(f"  ✅ Summary ready.")
     return summary
 
 
