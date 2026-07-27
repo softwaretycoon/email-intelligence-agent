@@ -61,7 +61,7 @@ def run_agent():
         # ── Step 1: Read unread emails ────────────────────────────
         print("\n📧 Step 1: Reading unread emails from Gmail...")
         service = get_gmail_service()
-        emails  = get_unread_emails(max_results=5, service=service)
+        emails = get_unread_emails(max_results=1, service=service)
 
         if not emails:
             print("✅ No new emails found.")
