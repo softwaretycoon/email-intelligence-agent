@@ -88,7 +88,7 @@ def get_gmail_service():
     return build('gmail', 'v1', credentials=creds)
 
 
-def get_unread_emails(max_results=5, service=None):
+def get_unread_emails(max_results=1, service=None):
     """
     Fetches unread emails from Gmail inbox.
     Returns a list of emails with sender, subject and body.

@@ -3,13 +3,10 @@ import time
 from google import genai
 from dotenv import load_dotenv
 
-# ── Load credentials from .env file ──────────────────────────────────────────
 load_dotenv()
 
-# ── Connect to Gemini ─────────────────────────────────────────────────────────
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# ── Newsletter keywords — skip these without calling Gemini ──────────────────
 SKIP_KEYWORDS = [
     'unsubscribe', 'newsletter', 'promotion', 'offer',
     'deal', 'discount', 'sale', 'marketing', 'no-reply',
@@ -19,10 +16,6 @@ SKIP_KEYWORDS = [
 
 
 def is_newsletter(sender, subject, body):
-    """
-    Returns True if the email looks like a newsletter or promotion.
-    Checks sender, subject and first 500 chars of body.
-    """
     combined = (sender + ' ' + subject + ' ' + body[:500]).lower()
     return any(kw in combined for kw in SKIP_KEYWORDS)
 
@@ -30,74 +23,96 @@ def is_newsletter(sender, subject, body):
 def summarise_single_email(sender, subject, body):
     """
     Sends one email to Gemini and returns a structured summary.
-    Called once per email as it arrives — no batching.
     """
-    prompt = f"""
-You are an intelligent email assistant.
-Summarise the email below in 3-4 sentences maximum.
-Be clear, concise and professional.
-Highlight the key point, any action required, and the urgency level.
+    prompt = (
+        "You are an intelligent email assistant.\n"
+        "Summarise the email below in 3-4 sentences maximum.\n"
+        "Be clear, concise and professional.\n\n"
+        "Email Details:\n"
+        f"- From:    {sender}\n"
+        f"- Subject: {subject}\n"
+        f"- Body:    {body}\n\n"
+        "Return your summary in this exact format:\n"
+        "From: [sender name only]\n"
+        "Subject: [subject]\n"
+        "Summary: [3-4 sentence summary]\n"
+        "Action needed: [Yes / No - and what action if yes]\n"
+        "Urgency: [Low / Medium / High]\n"
+    )
 
-Email Details:
-- From:    {sender}
-- Subject: {subject}
-- Body:    {body}
-
-Return your summary in this exact format:
-📧 From: [sender name only, not full email]
-📌 Subject: [subject]
-📝 Summary: [your 3-4 sentence summary]
-⚡ Action needed: [Yes / No — and what action if yes]
-🔴 Urgency: [Low / Medium / High]
-"""
     try:
         response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
+            model="gemini-2.5-flash-lite",
             contents=prompt
         )
-        return response.text.strip()
+        text = getattr(response, 'text', None)
+        return (text or '').strip()
 
     except Exception as e:
         if '429' in str(e):
-            print("  \u23F3 Rate limit hit \u2014 waiting 60 seconds...")
+            print("  Rate limit hit - waiting 60 seconds...")
             time.sleep(60)
-            # Retry once
             response = client.models.generate_content(
-                model="gemini-3.5-flash-lite",
+                model="gemini-2.5-flash-lite",
                 contents=prompt
             )
-            return response.text.strip()
+            text = getattr(response, 'text', None)
+            return (text or '').strip()
         else:
             raise e
+
+
+def needs_attention(summary):
+    """
+    Returns True only if the email requires action or is Medium/High urgency.
+    Low urgency emails with no action needed are silently skipped.
+    """
+    summary_lower = summary.lower()
+
+    # Check urgency
+    is_high    = "urgency: high"   in summary_lower
+    is_medium  = "urgency: medium" in summary_lower
+    is_low     = "urgency: low"    in summary_lower
+
+    # Check action needed
+    action_yes = "action needed: yes" in summary_lower
+
+    # Only send if action is needed OR urgency is Medium or High
+    if action_yes or is_high or is_medium:
+        return True
+
+    print("  Skipping - Low urgency, no action needed.")
+    return False
 
 
 def process_incoming_email(email):
     """
     Processes a single incoming email.
-    Called directly from main.py when a new email arrives via Pub/Sub.
     Returns the summary string or None if the email should be skipped.
     """
     sender  = email.get('sender', '')
     subject = email.get('subject', '')
     body    = email.get('body', '')
 
-    # ── Check if newsletter before calling Gemini ─────────────────
+    # Skip newsletters
     if is_newsletter(sender, subject, body):
-        print(f"  \u23ED Skipping \u2014 newsletter or promotional email")
+        print(f"  Skipping - newsletter or promotional email")
         return None
 
-       # ── Summarise with Gemini ─────────────────────────────────────
-    print(f"  🤖 Summarising email from {sender}...")
+    # Summarise with Gemini
+    print(f"  Summarising email from {sender}...")
     summary = summarise_single_email(sender, subject, body)
-    print(f"  ✅ Summary ready.")
+
+    # Skip low urgency emails with no action needed
+    if not needs_attention(summary):
+        return None
+
+    print(f"  Summary ready - sending to WhatsApp.")
     return summary
 
 
 def summarise_all_emails(emails, priority_filter=True):
-    """
-    Legacy function kept for compatibility with startup check.
-    Processes a list of emails one at a time.
-    """
+    """Legacy function kept for compatibility."""
     summaries = []
     skipped   = 0
 
@@ -108,10 +123,9 @@ def summarise_all_emails(emails, priority_filter=True):
             skipped += 1
             continue
 
-        # Extract urgency from summary
         urgency = "Low"
-        if "Urgency: High"   in summary: urgency = "High"
-        elif "Urgency: Medium" in summary: urgency = "Medium"
+        if "urgency: high"   in summary.lower(): urgency = "High"
+        elif "urgency: medium" in summary.lower(): urgency = "Medium"
 
         summaries.append({
             'id':      email['id'],
@@ -120,12 +134,11 @@ def summarise_all_emails(emails, priority_filter=True):
         })
 
     if skipped > 0:
-        print(f"\u23ED  {skipped} newsletter/promotional email(s) skipped.")
+        print(f"  {skipped} email(s) skipped.")
 
     return summaries
 
 
-# ── Test this file directly ───────────────────────────────────────────────────
 if __name__ == '__main__':
     import sys
     sys.path.append('src')
@@ -137,8 +150,7 @@ if __name__ == '__main__':
     if not emails:
         print("No unread emails.")
     else:
-        email   = emails[0]
-        summary = process_incoming_email(email)
+        summary = process_incoming_email(emails[0])
         if summary:
             print("\n" + "="*60)
             print(summary)

@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Connect to Twilio ─────────────────────────────────────────────────────────
-account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
-from_number = os.getenv("TWILIO_WHATSAPP_FROM")
-to_number   = os.getenv("TWILIO_WHATSAPP_TO")
+account_sid = os.getenv("TWILIO_ACCOUNT_SID") or ""
+auth_token  = os.getenv("TWILIO_AUTH_TOKEN") or ""
+from_number = os.getenv("TWILIO_WHATSAPP_FROM") or ""
+to_number   = os.getenv("TWILIO_WHATSAPP_TO") or ""
 
 client = Client(account_sid, auth_token)
 
