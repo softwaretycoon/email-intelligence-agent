@@ -16,10 +16,43 @@ from whatsapp_sender import send_whatsapp
 
 app = Flask(__name__)
 
-CONTEXT_FILE = 'email_context.json'
-last_history_id = None
+CONTEXT_FILE       = 'email_context.json'
+LAST_ID_FILE       = 'last_history_id.json'
+PROCESSED_IDS_FILE = 'processed_ids.json'
 
 
+# ── Deduplication helpers ─────────────────────────────────────────────────────
+def get_last_history_id():
+    if os.path.exists(LAST_ID_FILE):
+        with open(LAST_ID_FILE, 'r') as f:
+            return json.load(f).get('id')
+    return None
+
+
+def save_last_history_id(history_id):
+    with open(LAST_ID_FILE, 'w') as f:
+        json.dump({'id': history_id}, f)
+
+
+def is_already_processed(message_id):
+    if os.path.exists(PROCESSED_IDS_FILE):
+        with open(PROCESSED_IDS_FILE, 'r') as f:
+            return message_id in json.load(f)
+    return False
+
+
+def mark_as_processed(message_id):
+    ids = []
+    if os.path.exists(PROCESSED_IDS_FILE):
+        with open(PROCESSED_IDS_FILE, 'r') as f:
+            ids = json.load(f)
+    ids.append(message_id)
+    ids = ids[-100:]  # Keep only last 100 to avoid file growing too large
+    with open(PROCESSED_IDS_FILE, 'w') as f:
+        json.dump(ids, f)
+
+
+# ── Email context for WhatsApp replies ───────────────────────────────────────
 def update_email_context(email_id, sender, subject):
     context = {}
     if os.path.exists(CONTEXT_FILE):
@@ -31,19 +64,20 @@ def update_email_context(email_id, sender, subject):
     print(f"Context saved for email from {sender}")
 
 
+# ── Main agent function ───────────────────────────────────────────────────────
 def run_agent_for_new_email(history_id):
     """
     Processes only the single latest email that triggered the notification.
-    Skips low urgency emails with no action needed.
+    Skips duplicates, newsletters and low urgency emails with no action needed.
     """
     print(f"\n{'='*60}")
-    print(f"New email received at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"New email at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}")
 
     try:
         service = get_gmail_service()
 
-        # ── Get only the new message from Gmail history ───────────
+        # ── Get new messages from Gmail history ───────────────────
         history = service.users().history().list(
             userId='me',
             startHistoryId=history_id,
@@ -57,7 +91,7 @@ def run_agent_for_new_email(history_id):
             print("No new messages in history.")
             return
 
-        # ── Get only the LATEST new email ID ──────────────────────
+        # ── Collect new email IDs ─────────────────────────────────
         new_message_ids = []
         for change in changes:
             for msg in change.get('messagesAdded', []):
@@ -67,9 +101,18 @@ def run_agent_for_new_email(history_id):
             print("No new inbox messages.")
             return
 
-        # Take only the most recent one
+        # ── Process only the latest single email ──────────────────
         latest_id = new_message_ids[-1]
-        print(f"Processing latest email ID: {latest_id}")
+
+        # Skip if already processed
+        if is_already_processed(latest_id):
+            print(f"Email {latest_id} already processed - skipping duplicate.")
+            return
+
+        # Mark as processed immediately to prevent duplicates
+        mark_as_processed(latest_id)
+
+        print(f"Processing email ID: {latest_id}")
 
         # ── Fetch full email details ──────────────────────────────
         msg_data = service.users().messages().get(
@@ -84,6 +127,9 @@ def run_agent_for_new_email(history_id):
         date    = next((h['value'] for h in headers if h['name'] == 'Date'),    'Unknown')
         body    = extract_body(msg_data['payload'])
 
+        print(f"From:    {sender}")
+        print(f"Subject: {subject}")
+
         email = {
             'id':      latest_id,
             'sender':  sender,
@@ -92,10 +138,7 @@ def run_agent_for_new_email(history_id):
             'body':    body[:3000]
         }
 
-        print(f"From:    {sender}")
-        print(f"Subject: {subject}")
-
-        # ── Summarise the single email ────────────────────────────
+        # ── Summarise and filter ──────────────────────────────────
         summary = process_incoming_email(email)
 
         if summary is None:
@@ -103,18 +146,17 @@ def run_agent_for_new_email(history_id):
             mark_as_read(service, latest_id)
             return
 
-        # ── Send to WhatsApp ──────────────────────────────────────
+        # ── Send clean summary to WhatsApp (no header) ────────────
         print("Sending summary to WhatsApp...")
-        message = f"*New Email Summary*\n\n{summary}"
-        send_whatsapp(message)
-        print("Summary sent to WhatsApp.")
+        send_whatsapp(summary)
+        print("Summary delivered to WhatsApp.")
 
-        # ── Save context for reply feature ────────────────────────
+        # ── Save context for WhatsApp reply feature ───────────────
         with open(CONTEXT_FILE, 'w') as f:
             json.dump({}, f)
         update_email_context(latest_id, sender, subject)
 
-        # ── Mark as read ──────────────────────────────────────────
+        # ── Mark email as read in Gmail ───────────────────────────
         mark_as_read(service, latest_id)
 
         print(f"Done at {datetime.now().strftime('%H:%M:%S')}")
@@ -123,10 +165,9 @@ def run_agent_for_new_email(history_id):
         print(f"Agent error: {e}")
 
 
+# ── Gmail Push Notification Webhook ──────────────────────────────────────────
 @app.route('/gmail-notification', methods=['POST'])
 def gmail_notification():
-    global last_history_id
-
     try:
         envelope = request.get_json()
         if not envelope or 'message' not in envelope:
@@ -139,14 +180,16 @@ def gmail_notification():
         history_id = notification.get('historyId')
         email_addr = notification.get('emailAddress')
 
-        print(f"\nNew email notification - {email_addr} - History ID: {history_id}")
+        print(f"\nNotification received - {email_addr} - History ID: {history_id}")
 
-        if history_id == last_history_id:
-            print("Duplicate notification - skipping.")
+        # Deduplicate by history ID
+        if history_id == get_last_history_id():
+            print("Duplicate history ID - skipping.")
             return "OK", 200
 
-        last_history_id = history_id
+        save_last_history_id(history_id)
 
+        # Process in background thread so webhook returns immediately
         thread = threading.Thread(
             target=run_agent_for_new_email,
             args=(history_id,)
@@ -160,9 +203,9 @@ def gmail_notification():
     return "OK", 200
 
 
+# ── WhatsApp Reply Webhook ────────────────────────────────────────────────────
 @app.route('/whatsapp-reply', methods=['POST'])
 def whatsapp_reply():
-    """Handles WhatsApp replies and sends them via Gmail."""
     incoming_msg = request.form.get('Body', '').strip()
     print(f"Incoming WhatsApp message: {incoming_msg}")
 
@@ -210,11 +253,13 @@ def whatsapp_reply():
     return "OK", 200
 
 
+# ── Health Check ──────────────────────────────────────────────────────────────
 @app.route('/health', methods=['GET'])
 def health():
     return {"status": "running", "agent": "Email Intelligence Agent"}, 200
 
 
+# ── Gmail Watch Renewal ───────────────────────────────────────────────────────
 def renew_gmail_watch():
     try:
         from gmail_watch import start_gmail_watch
@@ -224,20 +269,24 @@ def renew_gmail_watch():
         print(f"Failed to renew Gmail watch: {e}")
 
 
+# ── Agent Startup ─────────────────────────────────────────────────────────────
 def start_agent():
     print("Email Intelligence Agent starting...")
-    print("Real-time mode - fires on every new actionable email\n")
+    print("Real-time mode - fires instantly on new actionable emails\n")
 
     send_whatsapp(
         "*Email Intelligence Agent is running!*\n\n"
         "I will summarise actionable emails instantly as they arrive.\n"
-        "Low urgency emails with no action needed will be skipped.\n\n"
-        "To reply: REPLY 1 Your message here"
+        "Newsletters and low urgency emails will be skipped.\n\n"
+        "To reply to an email type:\n"
+        "REPLY 1 Your message here"
     )
 
+    # Start Gmail watch
     print("Starting Gmail push notifications...")
     renew_gmail_watch()
 
+    # Renew watch every 6 days
     schedule.every(6).days.do(renew_gmail_watch)
 
     def run_scheduler():
@@ -249,14 +298,16 @@ def start_agent():
     scheduler_thread.daemon = True
     scheduler_thread.start()
 
+    # Start Flask webhook server
     print("Starting webhook server on port 5000...")
     app.run(host='0.0.0.0', port=5000, debug=False)
 
 
+# ── Entry Point ───────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     try:
         start_agent()
     except KeyboardInterrupt:
-        print("\nAgent stopped by user.")
+        print("\nAgent stopped.")
         send_whatsapp("Email Intelligence Agent has been stopped.")
         print("Goodbye!")
