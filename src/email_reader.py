@@ -9,7 +9,8 @@ from googleapiclient.discovery import build
 # ── What permissions we need from Gmail ──────────────────────────────────────
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/gmail.send'
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.modify'
 ]
 
 # ── Path to local credential files ───────────────────────────────────────────
