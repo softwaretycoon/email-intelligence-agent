@@ -20,6 +20,14 @@ def is_newsletter(sender, subject, body):
     return any(kw in combined for kw in SKIP_KEYWORDS)
 
 
+def _extract_text(response):
+    """Safely extract text from a Gemini response, guarding against None."""
+    text = response.text
+    if text is None:
+        raise ValueError("Gemini returned an empty response (no text).")
+    return text.strip()
+
+
 def summarise_single_email(sender, subject, body):
     """
     Sends one email to Gemini and returns a structured summary.
@@ -45,8 +53,7 @@ def summarise_single_email(sender, subject, body):
             model="gemini-2.5-flash-lite",
             contents=prompt
         )
-        text = getattr(response, 'text', None)
-        return (text or '').strip()
+        return _extract_text(response)
 
     except Exception as e:
         if '429' in str(e):
@@ -56,8 +63,7 @@ def summarise_single_email(sender, subject, body):
                 model="gemini-2.5-flash-lite",
                 contents=prompt
             )
-            text = getattr(response, 'text', None)
-            return (text or '').strip()
+            return _extract_text(response)
         else:
             raise e
 

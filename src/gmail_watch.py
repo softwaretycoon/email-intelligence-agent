@@ -9,7 +9,7 @@ from email_reader import get_gmail_service
 load_dotenv()
 
 # ── Your Pub/Sub topic full name ──────────────────────────────────────────────
-PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT_ID", "ninth-territory-502510-k6")
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT_ID")
 TOPIC_NAME = f"projects/{PROJECT_ID}/topics/gmail-notifications"
 
 
