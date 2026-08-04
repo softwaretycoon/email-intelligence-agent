@@ -33,20 +33,22 @@ def summarise_single_email(sender, subject, body):
     Sends one email to Gemini and returns a structured summary.
     """
     prompt = (
-        "You are an intelligent email assistant.\n"
-        "Summarise the email below in 3-4 sentences maximum.\n"
-        "Be clear, concise and professional.\n\n"
-        "Email Details:\n"
-        f"- From:    {sender}\n"
-        f"- Subject: {subject}\n"
-        f"- Body:    {body}\n\n"
-        "Return your summary in this exact format:\n"
-        "From: [sender name only]\n"
-        "Subject: [subject]\n"
-        "Summary: [3-4 sentence summary]\n"
-        "Action needed: [Yes / No - and what action if yes]\n"
-        "Urgency: [Low / Medium / High]\n"
-    )
+    "You are an intelligent email assistant.\n"
+    "Summarise the email below in 3-4 sentences maximum.\n"
+    "Be clear, concise and professional.\n"
+    "Format the output for WhatsApp using *asterisks* for bold labels only (not the values).\n\n"
+    "Email Details:\n"
+    f"- From:    {sender}\n"
+    f"- Subject: {subject}\n"
+    f"- Body:    {body}\n\n"
+    "Return your summary in this exact format:\n"
+    "*From:* [sender name]\n"
+    "*Email:* [sender email address]\n"
+    "*Subject:* [subject]\n\n"
+    "*Summary:* [3-4 sentence summary]\n\n"
+    "*Action needed:* [Yes / No - and what action if yes]\n"
+    "*Urgency:* [Low / Medium / High]\n"
+)
 
     try:
         response = client.models.generate_content(
@@ -60,7 +62,7 @@ def summarise_single_email(sender, subject, body):
             print("  Rate limit hit - waiting 60 seconds...")
             time.sleep(60)
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model="gemini-3.5-flash-lite",
                 contents=prompt
             )
             return _extract_text(response)
