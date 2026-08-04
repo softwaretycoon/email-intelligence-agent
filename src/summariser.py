@@ -50,7 +50,7 @@ def summarise_single_email(sender, subject, body):
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-3.5-flash-lite",
             contents=prompt
         )
         return _extract_text(response)
