@@ -182,17 +182,24 @@ def gmail_notification():
 
         print(f"\nNotification received - {email_addr} - History ID: {history_id}")
 
-        # Deduplicate by history ID
-        if history_id == get_last_history_id():
+        # Get the PREVIOUS historyId to use as the query starting point
+        previous_history_id = get_last_history_id()
+
+        if history_id == previous_history_id:
             print("Duplicate history ID - skipping.")
             return "OK", 200
 
+        # Save the new historyId as the baseline for NEXT time
         save_last_history_id(history_id)
 
-        # Process in background thread so webhook returns immediately
+        if previous_history_id is None:
+            print("No previous history ID stored yet - skipping this notification (will process next one).")
+            return "OK", 200
+
+        # Process using the PREVIOUS id as the starting point
         thread = threading.Thread(
             target=run_agent_for_new_email,
-            args=(history_id,)
+            args=(previous_history_id,)
         )
         thread.daemon = True
         thread.start()
