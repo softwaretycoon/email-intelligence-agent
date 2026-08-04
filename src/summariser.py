@@ -30,25 +30,25 @@ def _extract_text(response):
 
 def summarise_single_email(sender, subject, body):
     """
-    Sends one email to Gemini and returns a structured summary.
+    Sends one email to Gemini and returns a structured, WhatsApp-formatted summary.
     """
     prompt = (
-    "You are an intelligent email assistant.\n"
-    "Summarise the email below in 3-4 sentences maximum.\n"
-    "Be clear, concise and professional.\n"
-    "Format the output for WhatsApp using *asterisks* for bold labels only (not the values).\n\n"
-    "Email Details:\n"
-    f"- From:    {sender}\n"
-    f"- Subject: {subject}\n"
-    f"- Body:    {body}\n\n"
-    "Return your summary in this exact format:\n"
-    "*From:* [sender name]\n"
-    "*Email:* [sender email address]\n"
-    "*Subject:* [subject]\n\n"
-    "*Summary:* [3-4 sentence summary]\n\n"
-    "*Action needed:* [Yes / No - and what action if yes]\n"
-    "*Urgency:* [Low / Medium / High]\n"
-)
+        "You are an intelligent email assistant.\n"
+        "Summarise the email below in 3-4 sentences maximum.\n"
+        "Be clear, concise and professional.\n"
+        "Format the output for WhatsApp using *asterisks* for bold labels only (not the values).\n\n"
+        "Email Details:\n"
+        f"- From:    {sender}\n"
+        f"- Subject: {subject}\n"
+        f"- Body:    {body}\n\n"
+        "Return your summary in this exact format:\n"
+        "*From:* [sender name]\n"
+        "*Email:* [sender email address]\n"
+        "*Subject:* [subject]\n\n"
+        "*Summary:* [3-4 sentence summary]\n\n"
+        "*Action needed:* [Yes / No - and what action if yes]\n"
+        "*Urgency:* [Low / Medium / High]\n"
+    )
 
     try:
         response = client.models.generate_content(
@@ -74,18 +74,18 @@ def needs_attention(summary):
     """
     Returns True only if the email requires action or is Medium/High urgency.
     Low urgency emails with no action needed are silently skipped.
+
+    Strips markdown asterisks before matching so this works regardless of
+    whether the summary is formatted for WhatsApp (*Action needed:* Yes)
+    or plain text (Action needed: Yes).
     """
     summary_lower = summary.lower()
+    clean = summary_lower.replace('*', '')
 
-    # Check urgency
-    is_high    = "urgency: high"   in summary_lower
-    is_medium  = "urgency: medium" in summary_lower
-    is_low     = "urgency: low"    in summary_lower
+    is_high    = "urgency: high"   in clean
+    is_medium  = "urgency: medium" in clean
+    action_yes = "action needed: yes" in clean
 
-    # Check action needed
-    action_yes = "action needed: yes" in summary_lower
-
-    # Only send if action is needed OR urgency is Medium or High
     if action_yes or is_high or is_medium:
         return True
 
@@ -131,9 +131,10 @@ def summarise_all_emails(emails, priority_filter=True):
             skipped += 1
             continue
 
+        clean = summary.lower().replace('*', '')
         urgency = "Low"
-        if "urgency: high"   in summary.lower(): urgency = "High"
-        elif "urgency: medium" in summary.lower(): urgency = "Medium"
+        if "urgency: high"   in clean: urgency = "High"
+        elif "urgency: medium" in clean: urgency = "Medium"
 
         summaries.append({
             'id':      email['id'],
