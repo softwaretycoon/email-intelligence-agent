@@ -289,6 +289,10 @@ def start_agent():
     print("Email Intelligence Agent starting...")
     print("Real-time mode - fires instantly on new actionable emails\n")
 
+    send_whatsapp(
+        "Email Intelligence Agent is now running! "
+        "You'll receive WhatsApp summaries of new actionable emails."
+    )
 
     # Start Gmail watch
     print("Starting Gmail push notifications...")

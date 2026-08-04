@@ -48,14 +48,14 @@ def authenticate_gmail():
 
         # Save refreshed token
         if os.getenv("GOOGLE_TOKEN"):
-            # On Railway — print the new token so you can update the variable
-            print("\n⚠️  TOKEN REFRESHED — Update GOOGLE_TOKEN in Railway with:")
-            print(creds.to_json())
-            print()
-        else:
-            # Locally — save to token.json
-            with open(TOKEN_FILE, 'w') as token:
-                token.write(creds.to_json())
+    # On Railway — save to persistent volume instead of printing to logs
+    data_dir = os.getenv("DATA_DIR", ".")
+    refreshed_path = os.path.join(data_dir, "refreshed_token.json")
+    with open(refreshed_path, "w") as f:
+        f.write(creds.to_json())
+    print(f"\n⚠️  TOKEN REFRESHED — new token saved to {refreshed_path}.")
+    print("Retrieve it via Railway's file browser/console and update GOOGLE_TOKEN manually.")
+    
 
     # ── If no valid creds, run local browser login ────────────────
     if not creds or not creds.valid:
