@@ -46,15 +46,20 @@ def authenticate_gmail():
         print("Token expired — refreshing...")
         creds.refresh(Request())
 
-        # Save refreshed token
-        if os.getenv("GOOGLE_TOKEN"):
-            # On Railway — save to persistent volume instead of printing to logs
-            data_dir = os.getenv("DATA_DIR", ".")
-            refreshed_path = os.path.join(data_dir, "refreshed_token.json")
-            with open(refreshed_path, "w") as f:
-                f.write(creds.to_json())
-            print(f"\n⚠️  TOKEN REFRESHED — new token saved to {refreshed_path}.")
-            print("Retrieve it via Railway's file browser/console and update GOOGLE_TOKEN manually.")
+    if os.getenv("GOOGLE_TOKEN"):
+        # On Railway — save to persistent volume instead of printing to logs
+        data_dir = os.getenv("DATA_DIR", ".")
+        refreshed_path = os.path.join(data_dir, "refreshed_token.json")
+        assert creds is not None
+        with open(refreshed_path, "w") as f:
+            f.write(creds.to_json())
+        print(f"\n⚠️  TOKEN REFRESHED — new token saved to {refreshed_path}.")
+        print("Retrieve it via Railway's file browser/console and update GOOGLE_TOKEN manually.")
+    else:
+        # Locally — save to token.json
+        assert creds is not None
+        with open(TOKEN_FILE, 'w') as token:
+            token.write(creds.to_json())
     
 
     # ── If no valid creds, run local browser login ────────────────
