@@ -16,9 +16,10 @@ from whatsapp_sender import send_whatsapp
 
 app = Flask(__name__)
 
-CONTEXT_FILE       = 'email_context.json'
-LAST_ID_FILE       = 'last_history_id.json'
-PROCESSED_IDS_FILE = 'processed_ids.json'
+DATA_DIR = os.getenv('DATA_DIR', '.')  # defaults to current dir for local runs
+CONTEXT_FILE       = os.path.join(DATA_DIR, 'email_context.json')
+LAST_ID_FILE       = os.path.join(DATA_DIR, 'last_history_id.json')
+PROCESSED_IDS_FILE = os.path.join(DATA_DIR, 'processed_ids.json')
 
 
 # ── Deduplication helpers ─────────────────────────────────────────────────────
@@ -270,7 +271,14 @@ def health():
 def renew_gmail_watch():
     try:
         from gmail_watch import start_gmail_watch
-        start_gmail_watch()
+        response = start_gmail_watch()
+
+        # Seed the baseline historyId so we don't skip the first real notification
+        history_id = response.get('historyId')
+        if history_id:
+            save_last_history_id(history_id)
+            print(f"Seeded starting History ID: {history_id}")
+
         print("Gmail watch renewed successfully.")
     except Exception as e:
         print(f"Failed to renew Gmail watch: {e}")
