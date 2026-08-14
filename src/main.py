@@ -217,28 +217,23 @@ def whatsapp_reply():
     incoming_msg = request.form.get('Body', '').strip()
     print(f"Incoming WhatsApp message: {incoming_msg}")
 
-    if not incoming_msg.upper().startswith('REPLY'):
+    if not incoming_msg.upper().startswith('REPLY:'):
         return "OK", 200
 
-    parts = incoming_msg.split(' ', 2)
-    if len(parts) < 3:
-        return "OK", 200
-
-    try:
-        email_num  = int(parts[1])
-        reply_body = parts[2]
-    except ValueError:
+    reply_body = incoming_msg[len('REPLY:'):].strip()
+    if not reply_body:
+        print("Empty reply body - ignoring.")
         return "OK", 200
 
     try:
         context    = json.load(open(CONTEXT_FILE)) if os.path.exists(CONTEXT_FILE) else {}
         email_keys = list(context.keys())
 
-        if not email_keys or email_num - 1 >= len(email_keys):
+        if not email_keys:
             print("No email context found.")
             return "OK", 200
 
-        email_id  = email_keys[email_num - 1]
+        email_id  = email_keys[-1]        # most recently tracked email
         email_ctx = context[email_id]
 
         from reply_handler import send_gmail_reply
