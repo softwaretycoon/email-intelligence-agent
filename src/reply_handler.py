@@ -63,7 +63,7 @@ def send_gmail_reply(to_email, subject, body):
 def whatsapp_reply():
     """
     Twilio webhook - fires when you send a WhatsApp message to the sandbox.
-    Format: REPLY 1 Your message here
+    Format: REPLY: Your message here
     """
     incoming_msg = request.form.get('Body', '').strip()
     print(f"\nIncoming WhatsApp message: {incoming_msg}")
@@ -123,5 +123,5 @@ def whatsapp_reply():
 if __name__ == '__main__':
     print("Reply webhook server starting on port 5000...")
     print("Waiting for WhatsApp replies...")
-    print("\nHow to reply: REPLY 1 Your message here\n")
+    print("\nHow to reply: REPLY: Your message here\n")
     app.run(port=5000, debug=False)
